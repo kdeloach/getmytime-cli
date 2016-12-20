@@ -173,7 +173,8 @@ class GetMyTimeApi(object):
         print('Done')
 
     def create_time_entry(self, startdate, enddate, customer, activity,
-                          comments, tags, minutes, dry_run=False, force=False):
+                          comments, tags, minutes, dry_run=False,
+                          force=False, allow_misc=False):
         customers = self.lookupByName['customers']
         tasks = self.lookupByName['tasks']
 
@@ -205,6 +206,8 @@ class GetMyTimeApi(object):
         log.info('Submitting {} {} {}; Notes: {}'.format(
             startdate, customer, activity, comments))
 
+        # Azavea specific rules.
+
         if len(comments.strip()) == 0:
             raise InvalidTimeEntryError('Comments field may not be empty')
 
@@ -216,16 +219,18 @@ class GetMyTimeApi(object):
             raise InvalidTimeEntryError('Not allowed to use top level '
                                         'category "{}"'.format(customer))
 
-        if (not force and
-                activity.lower() == 'Indirect - Admin:Miscellaneous'.lower()):
-            raise InvalidTimeEntryError('Never use "Indirect - Admin:Miscellaenous"!'
-                                        ' (Use `--force` to override this rule)')
+        if activity.lower() == 'Indirect - Admin:Miscellaneous'.lower() and \
+                not allow_misc:
+            message = 'Never use "Indirect - Admin:Miscellaenous"!'
+                      ' (Use `--allow-miscellaneous` to override this rule)'
+            raise InvalidTimeEntryError()
 
         if (not force and
                 ('interview' in comments or 'presentation' in comments) and
                 'hiring' not in activity.lower()):
-            raise InvalidTimeEntryError('Consider using "Indirect - Admin:Personnel/Hiring" for this entry.'
-                                        ' (Use `--force` to override this rule)')
+            message = 'Consider using "Indirect - Admin:Personnel/Hiring"'
+                      ' (Use `--force` to override this rule)'
+            raise InvalidTimeEntryError(message)
 
         if not dry_run:
             r = requests.post(self.URL, params=params, data=form_data,
@@ -436,6 +441,8 @@ def main():
                          help='timesheet records JSON (defaults to stdin)')
     parser3.add_argument('--dry-run', action='store_true',
                          help='do nothing destructive (useful for testing)')
+    parser3.add_argument('--allow-miscellaneous', action='store_true',
+                         help='allow use of Indirect - Admin:Miscellaenous')
     parser3.add_argument('-f', '--force', action='store_true',
                          help='ignore some validation rules')
     parser3.set_defaults(cmd='import')
@@ -474,7 +481,8 @@ def main():
             lines = fileinput.input(args.file)
             contents = ''.join(lines)
             entries = json.loads(contents)
-            api.create(entries, dry_run=args.dry_run, force=args.force)
+            api.create(entries, dry_run=args.dry_run,
+                       force=args.force, allow_misc=args.allow_misc)
 
         elif args.cmd == 'lookups':
             if args.raw:
